@@ -1,4 +1,4 @@
-module fuse
+module bazil.org/fuse
 
 go 1.16
 

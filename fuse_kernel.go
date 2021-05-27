@@ -87,7 +87,7 @@ type kstatfs struct {
 	Spare   [6]uint32
 }
 
-// GetattrFlags are bit flags that can be seen in GetattrRequest.
+// GetattrFlags are bit Flags that can be seen in GetattrRequest.
 type GetattrFlags uint32
 
 const (
@@ -103,7 +103,7 @@ func (fl GetattrFlags) String() string {
 	return flagString(uint32(fl), getattrFlagsNames)
 }
 
-// The SetattrValid are bit flags describing which fields in the SetattrRequest
+// The SetattrValid are bit Flags describing which fields in the SetattrRequest
 // are included in the change.
 type SetattrValid uint32
 
@@ -171,7 +171,7 @@ var setattrValidNames = []flagName{
 
 // Flags that can be seen in OpenRequest.Flags.
 const (
-	// Access modes. These are not 1-bit flags, but alternatives where
+	// Access modes. These are not 1-bit Flags, but alternatives where
 	// only one can be chosen. See the IsReadOnly etc convenience
 	// methods.
 	OpenReadOnly  OpenFlags = syscall.O_RDONLY
@@ -190,15 +190,15 @@ const (
 )
 
 // OpenAccessModeMask is a bitmask that separates the access mode
-// from the other flags in OpenFlags.
+// from the other Flags in OpenFlags.
 const OpenAccessModeMask OpenFlags = syscall.O_ACCMODE
 
-// OpenFlags are the O_FOO flags passed to open/create/etc calls. For
+// OpenFlags are the O_FOO Flags passed to open/create/etc calls. For
 // example, os.O_WRONLY | os.O_APPEND.
 type OpenFlags uint32
 
 func (fl OpenFlags) String() string {
-	// O_RDONLY, O_RWONLY, O_RDWR are not flags
+	// O_RDONLY, O_RWONLY, O_RDWR are not Flags
 	s := accModeName(fl & OpenAccessModeMask)
 	flags := uint32(fl &^ OpenAccessModeMask)
 	if flags != 0 {

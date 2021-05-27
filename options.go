@@ -117,7 +117,7 @@ func AllowOther() MountOption {
 // filesystem.
 func AllowDev() MountOption {
 	return func(conf *mountConfig) error {
-		conf.options["dev"] = ""
+		conf.options["Dev"] = ""
 		return nil
 	}
 }
@@ -206,13 +206,13 @@ type OSXFUSEPaths struct {
 // Deprecated: Not used, OS X remnant.
 var (
 	OSXFUSELocationV3 = OSXFUSEPaths{
-		DevicePrefix: "/dev/osxfuse",
+		DevicePrefix: "/Dev/osxfuse",
 		Load:         "/Library/Filesystems/osxfuse.fs/Contents/Resources/load_osxfuse",
 		Mount:        "/Library/Filesystems/osxfuse.fs/Contents/Resources/mount_osxfuse",
 		DaemonVar:    "MOUNT_OSXFUSE_DAEMON_PATH",
 	}
 	OSXFUSELocationV2 = OSXFUSEPaths{
-		DevicePrefix: "/dev/osxfuse",
+		DevicePrefix: "/Dev/osxfuse",
 		Load:         "/Library/Filesystems/osxfusefs.fs/Support/load_osxfusefs",
 		Mount:        "/Library/Filesystems/osxfusefs.fs/Support/mount_osxfusefs",
 		DaemonVar:    "MOUNT_FUSEFS_DAEMON_PATH",

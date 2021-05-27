@@ -142,6 +142,6 @@ func mount(dir string, conf *mountConfig) (fusefd *os.File, err error) {
 	if len(gotFds) != 1 {
 		return nil, fmt.Errorf("wanted 1 fd; got %#v", gotFds)
 	}
-	f := os.NewFile(uintptr(gotFds[0]), "/dev/fuse")
+	f := os.NewFile(uintptr(gotFds[0]), "/Dev/fuse")
 	return f, nil
 }

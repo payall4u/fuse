@@ -126,14 +126,14 @@ type Conn struct {
 
 	// File handle for kernel communication. Only safe to access if
 	// rio or wio is held.
-	dev *os.File
+	Dev *os.File
 	wio sync.RWMutex
 	rio sync.RWMutex
 
 	// Protocol version negotiated with initRequest/initResponse.
-	proto Protocol
-	// Feature flags negotiated with initRequest/initResponse.
-	flags InitFlags
+	Proto Protocol
+	// Feature Flags negotiated with initRequest/initResponse.
+	Flags InitFlags
 }
 
 // MountpointDoesNotExistError is an error returned when the
@@ -172,7 +172,7 @@ func Mount(dir string, options ...MountOption) (*Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.dev = f
+	c.Dev = f
 
 	if err := initMount(c, &conf); err != nil {
 		c.Close()
@@ -224,13 +224,13 @@ func initMount(c *Conn, conf *mountConfig) error {
 		// Kernel doesn't support the latest version we have.
 		proto = r.Kernel
 	}
-	c.proto = proto
+	c.Proto = proto
 
-	c.flags = r.Flags & (InitBigWrites | conf.initFlags)
+	c.Flags = r.Flags & (InitBigWrites | conf.initFlags)
 	s := &initResponse{
 		Library:             proto,
 		MaxReadahead:        conf.maxReadahead,
-		Flags:               c.flags,
+		Flags:               c.Flags,
 		MaxBackground:       conf.maxBackground,
 		CongestionThreshold: conf.congestionThreshold,
 		MaxWrite:            maxWrite,
@@ -551,23 +551,23 @@ func (c *Conn) Close() error {
 	defer c.wio.Unlock()
 	c.rio.Lock()
 	defer c.rio.Unlock()
-	return c.dev.Close()
+	return c.Dev.Close()
 }
 
 // caller must hold wio or rio
 func (c *Conn) fd() int {
-	return int(c.dev.Fd())
+	return int(c.Dev.Fd())
 }
 
 func (c *Conn) Protocol() Protocol {
-	return c.proto
+	return c.Proto
 }
 
-// Features reports the feature flags negotiated between the kernel and
+// Features reports the feature Flags negotiated between the kernel and
 // the FUSE library. See MountOption for how to influence features
 // activated.
 func (c *Conn) Features() InitFlags {
-	return c.flags
+	return c.Flags
 }
 
 // ReadRequest returns the next FUSE request from the kernel.
@@ -640,7 +640,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 
 	case opGetattr:
 		switch {
-		case c.proto.LT(Protocol{7, 9}):
+		case c.Proto.LT(Protocol{7, 9}):
 			req = &GetattrRequest{
 				Header: m.Header(),
 			}
@@ -716,7 +716,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 		}
 
 	case opMknod:
-		size := mknodInSize(c.proto)
+		size := mknodInSize(c.Proto)
 		if m.len() < size {
 			goto corrupt
 		}
@@ -732,13 +732,13 @@ func (c *Conn) ReadRequest() (Request, error) {
 			Rdev:   in.Rdev,
 			Name:   string(name),
 		}
-		if c.proto.GE(Protocol{7, 12}) {
+		if c.Proto.GE(Protocol{7, 12}) {
 			r.Umask = fileMode(in.Umask) & os.ModePerm
 		}
 		req = r
 
 	case opMkdir:
-		size := mkdirInSize(c.proto)
+		size := mkdirInSize(c.Proto)
 		if m.len() < size {
 			goto corrupt
 		}
@@ -756,7 +756,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 			// code branch; enforce type to directory
 			Mode: fileMode((in.Mode &^ syscall.S_IFMT) | syscall.S_IFDIR),
 		}
-		if c.proto.GE(Protocol{7, 12}) {
+		if c.Proto.GE(Protocol{7, 12}) {
 			r.Umask = fileMode(in.Umask) & os.ModePerm
 		}
 		req = r
@@ -812,7 +812,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 
 	case opRead, opReaddir:
 		in := (*readIn)(m.data())
-		if m.len() < readInSize(c.proto) {
+		if m.len() < readInSize(c.Proto) {
 			goto corrupt
 		}
 		r := &ReadRequest{
@@ -822,7 +822,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 			Offset: int64(in.Offset),
 			Size:   int(in.Size),
 		}
-		if c.proto.GE(Protocol{7, 9}) {
+		if c.Proto.GE(Protocol{7, 9}) {
 			r.Flags = ReadFlags(in.ReadFlags)
 			r.LockOwner = LockOwner(in.LockOwner)
 			r.FileFlags = openFlags(in.Flags)
@@ -831,7 +831,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 
 	case opWrite:
 		in := (*writeIn)(m.data())
-		if m.len() < writeInSize(c.proto) {
+		if m.len() < writeInSize(c.Proto) {
 			goto corrupt
 		}
 		r := &WriteRequest{
@@ -840,11 +840,11 @@ func (c *Conn) ReadRequest() (Request, error) {
 			Offset: int64(in.Offset),
 			Flags:  WriteFlags(in.WriteFlags),
 		}
-		if c.proto.GE(Protocol{7, 9}) {
+		if c.Proto.GE(Protocol{7, 9}) {
 			r.LockOwner = LockOwner(in.LockOwner)
 			r.FileFlags = openFlags(in.Flags)
 		}
-		buf := m.bytes()[writeInSize(c.proto):]
+		buf := m.bytes()[writeInSize(c.Proto):]
 		if uint32(len(buf)) < in.Size {
 			goto corrupt
 		}
@@ -976,7 +976,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 		}
 
 	case opCreate:
-		size := createInSize(c.proto)
+		size := createInSize(c.Proto)
 		if m.len() < size {
 			goto corrupt
 		}
@@ -992,7 +992,7 @@ func (c *Conn) ReadRequest() (Request, error) {
 			Mode:   fileMode(in.Mode),
 			Name:   string(name[:i]),
 		}
-		if c.proto.GE(Protocol{7, 12}) {
+		if c.Proto.GE(Protocol{7, 12}) {
 			r.Umask = fileMode(in.Umask) & os.ModePerm
 		}
 		req = r
@@ -1576,12 +1576,12 @@ func (r *GetattrRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *GetattrRequest) Respond(resp *GetattrResponse) {
-	size := attrOutSize(r.Header.Conn.proto)
+	size := attrOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(size)
 	out := (*attrOut)(buf.alloc(size))
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&out.Attr, r.Header.Conn.Proto)
 	r.respond(buf)
 }
 
@@ -1757,7 +1757,7 @@ func (r *LookupRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *LookupRequest) Respond(resp *LookupResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := entryOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(size)
 	out := (*entryOut)(buf.alloc(size))
 	out.Nodeid = uint64(resp.Node)
@@ -1766,7 +1766,7 @@ func (r *LookupRequest) Respond(resp *LookupResponse) {
 	out.EntryValidNsec = uint32(resp.EntryValid % time.Second / time.Nanosecond)
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&out.Attr, r.Header.Conn.Proto)
 	r.respond(buf)
 }
 
@@ -1840,7 +1840,7 @@ func (r *CreateRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *CreateRequest) Respond(resp *CreateResponse) {
-	eSize := entryOutSize(r.Header.Conn.proto)
+	eSize := entryOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(eSize + unsafe.Sizeof(openOut{}))
 
 	e := (*entryOut)(buf.alloc(eSize))
@@ -1850,7 +1850,7 @@ func (r *CreateRequest) Respond(resp *CreateResponse) {
 	e.EntryValidNsec = uint32(resp.EntryValid % time.Second / time.Nanosecond)
 	e.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	e.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&e.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&e.Attr, r.Header.Conn.Proto)
 
 	o := (*openOut)(buf.alloc(unsafe.Sizeof(openOut{})))
 	o.Fh = uint64(resp.Handle)
@@ -1887,7 +1887,7 @@ func (r *MkdirRequest) String() string {
 
 // Respond replies to the request with the given response.
 func (r *MkdirRequest) Respond(resp *MkdirResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := entryOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(size)
 	out := (*entryOut)(buf.alloc(size))
 	out.Nodeid = uint64(resp.Node)
@@ -1896,7 +1896,7 @@ func (r *MkdirRequest) Respond(resp *MkdirResponse) {
 	out.EntryValidNsec = uint32(resp.EntryValid % time.Second / time.Nanosecond)
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&out.Attr, r.Header.Conn.Proto)
 	r.respond(buf)
 }
 
@@ -1959,7 +1959,7 @@ type ReleaseRequest struct {
 	Header       `json:"-"`
 	Dir          bool // is this Releasedir?
 	Handle       HandleID
-	Flags        OpenFlags // flags from OpenRequest
+	Flags        OpenFlags // Flags from OpenRequest
 	ReleaseFlags ReleaseFlags
 	LockOwner    LockOwner
 }
@@ -2248,12 +2248,12 @@ func (r *SetattrRequest) String() string {
 // Respond replies to the request with the given response,
 // giving the updated attributes.
 func (r *SetattrRequest) Respond(resp *SetattrResponse) {
-	size := attrOutSize(r.Header.Conn.proto)
+	size := attrOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(size)
 	out := (*attrOut)(buf.alloc(size))
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&out.Attr, r.Header.Conn.Proto)
 	r.respond(buf)
 }
 
@@ -2323,7 +2323,7 @@ func (r *SymlinkRequest) String() string {
 
 // Respond replies to the request, indicating that the symlink was created.
 func (r *SymlinkRequest) Respond(resp *SymlinkResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := entryOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(size)
 	out := (*entryOut)(buf.alloc(size))
 	out.Nodeid = uint64(resp.Node)
@@ -2332,7 +2332,7 @@ func (r *SymlinkRequest) Respond(resp *SymlinkResponse) {
 	out.EntryValidNsec = uint32(resp.EntryValid % time.Second / time.Nanosecond)
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&out.Attr, r.Header.Conn.Proto)
 	r.respond(buf)
 }
 
@@ -2376,7 +2376,7 @@ func (r *LinkRequest) String() string {
 }
 
 func (r *LinkRequest) Respond(resp *LookupResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := entryOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(size)
 	out := (*entryOut)(buf.alloc(size))
 	out.Nodeid = uint64(resp.Node)
@@ -2385,7 +2385,7 @@ func (r *LinkRequest) Respond(resp *LookupResponse) {
 	out.EntryValidNsec = uint32(resp.EntryValid % time.Second / time.Nanosecond)
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&out.Attr, r.Header.Conn.Proto)
 	r.respond(buf)
 }
 
@@ -2423,7 +2423,7 @@ func (r *MknodRequest) String() string {
 }
 
 func (r *MknodRequest) Respond(resp *LookupResponse) {
-	size := entryOutSize(r.Header.Conn.proto)
+	size := entryOutSize(r.Header.Conn.Proto)
 	buf := newBuffer(size)
 	out := (*entryOut)(buf.alloc(size))
 	out.Nodeid = uint64(resp.Node)
@@ -2432,7 +2432,7 @@ func (r *MknodRequest) Respond(resp *LookupResponse) {
 	out.EntryValidNsec = uint32(resp.EntryValid % time.Second / time.Nanosecond)
 	out.AttrValid = uint64(resp.Attr.Valid / time.Second)
 	out.AttrValidNsec = uint32(resp.Attr.Valid % time.Second / time.Nanosecond)
-	resp.Attr.attr(&out.Attr, r.Header.Conn.proto)
+	resp.Attr.attr(&out.Attr, r.Header.Conn.Proto)
 	r.respond(buf)
 }
 

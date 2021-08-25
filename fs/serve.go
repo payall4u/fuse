@@ -27,7 +27,6 @@ const (
 	attrValidTime  = 1 * time.Minute
 	entryValidTime = 1 * time.Minute
 )
-
 // TODO: FINISH DOCS
 
 // An FS is the interface required of a file system.
@@ -496,7 +495,6 @@ func (s *Server) Serve(fs FS) error {
 		refs:       1,
 	})
 	s.handle = append(s.handle, nil)
-
 	for {
 		req, err := s.conn.ReadRequest()
 		if err != nil {
@@ -505,7 +503,6 @@ func (s *Server) Serve(fs FS) error {
 			}
 			return err
 		}
-
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
@@ -1061,6 +1058,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	// Node operations.
+	// payall4u: why distinguish snode and node
 	case *fuse.GetattrRequest:
 		s := &fuse.GetattrResponse{}
 		if n, ok := node.(NodeGetattrer); ok {

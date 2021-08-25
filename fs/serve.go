@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -982,7 +980,7 @@ func (c *Server) serve(r fuse.Request) {
 		delete(c.req, hdr.ID)
 		c.meta.Unlock()
 	}
-
+	/*
 	var responded bool
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -1008,6 +1006,7 @@ func (c *Server) serve(r fuse.Request) {
 			r.RespondError(err)
 		}
 	}()
+	 */
 
 	if err := c.handleRequest(ctx, node, snode, r, done); err != nil {
 		if err == context.Canceled {
@@ -1034,7 +1033,7 @@ func (c *Server) serve(r fuse.Request) {
 	}
 
 	// disarm runtime.Goexit protection
-	responded = true
+	// responded = true
 }
 
 // handleRequest will either a) call done(s) and r.Respond(s) OR b) return an error.

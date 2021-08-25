@@ -117,7 +117,7 @@ func AllowOther() MountOption {
 // filesystem.
 func AllowDev() MountOption {
 	return func(conf *mountConfig) error {
-		conf.options["Dev"] = ""
+		conf.options["dev"] = ""
 		return nil
 	}
 }

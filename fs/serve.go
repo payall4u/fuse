@@ -25,6 +25,7 @@ const (
 	attrValidTime  = 1 * time.Minute
 	entryValidTime = 1 * time.Minute
 )
+
 // TODO: FINISH DOCS
 
 // An FS is the interface required of a file system.
@@ -34,6 +35,10 @@ const (
 type FS interface {
 	// Root is called to obtain the Node for the file system root.
 	Root() (Node, error)
+}
+
+type InodeKeeper interface {
+	Find(ino uint64) Node
 }
 
 type FSStatfser interface {
@@ -574,7 +579,7 @@ func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) 
 	}
 	sn.generation = c.nodeGen
 	c.nodeRef[node] = id
-	return id, sn.generation
+	return fuse.NodeID(inode), sn.generation
 }
 
 func (c *Server) saveHandle(handle Handle) (id fuse.HandleID) {
@@ -924,6 +929,10 @@ func (c *Server) serve(r fuse.Request) {
 	c.meta.Lock()
 	hdr := r.Hdr()
 	if id := hdr.Node; id != 0 {
+		if keeper, ok := c.fs.(InodeKeeper); ok {
+			node := keeper.Find(uint64(id))
+			c.saveNode(uint64(id), node)
+		}
 		if id < fuse.NodeID(len(c.node)) {
 			snode = c.node[uint(id)]
 		}
@@ -981,32 +990,32 @@ func (c *Server) serve(r fuse.Request) {
 		c.meta.Unlock()
 	}
 	/*
-	var responded bool
-	defer func() {
-		if rec := recover(); rec != nil {
-			const size = 1 << 16
-			buf := make([]byte, size)
-			n := runtime.Stack(buf, false)
-			buf = buf[:n]
-			log.Printf("fuse: panic in handler for %v: %v\n%s", r, rec, buf)
-			err := handlerPanickedError{
-				Request: r,
-				Err:     rec,
+		var responded bool
+		defer func() {
+			if rec := recover(); rec != nil {
+				const size = 1 << 16
+				buf := make([]byte, size)
+				n := runtime.Stack(buf, false)
+				buf = buf[:n]
+				log.Printf("fuse: panic in handler for %v: %v\n%s", r, rec, buf)
+				err := handlerPanickedError{
+					Request: r,
+					Err:     rec,
+				}
+				done(err)
+				r.RespondError(err)
+				return
 			}
-			done(err)
-			r.RespondError(err)
-			return
-		}
 
-		if !responded {
-			err := handlerTerminatedError{
-				Request: r,
+			if !responded {
+				err := handlerTerminatedError{
+					Request: r,
+				}
+				done(err)
+				r.RespondError(err)
 			}
-			done(err)
-			r.RespondError(err)
-		}
-	}()
-	 */
+		}()
+	*/
 
 	if err := c.handleRequest(ctx, node, snode, r, done); err != nil {
 		if err == context.Canceled {
@@ -1356,12 +1365,8 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 
 	// Handle operations.
 	case *fuse.ReadRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
-		handle := shandle.handle
-
+		handle := node
+		shandle := serveHandle{handle, []byte{}}
 		s := &fuse.ReadResponse{Data: make([]byte, 0, r.Size)}
 		if r.Dir {
 			if h, ok := handle.(HandleReadDirAller); ok {
@@ -1421,10 +1426,8 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.WriteRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
+		handle := node
+		shandle := serveHandle{handle, []byte{}}
 
 		s := &fuse.WriteResponse{}
 		if h, ok := shandle.handle.(HandleWriter); ok {
@@ -1438,11 +1441,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return syscall.EIO
 
 	case *fuse.FlushRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
-		handle := shandle.handle
+		handle := node
 
 		if h, ok := handle.(HandleFlusher); ok {
 			if err := h.Flush(ctx, r); err != nil {
@@ -1454,11 +1453,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.ReleaseRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
-		handle := shandle.handle
+		handle := node
 
 		// No matter what, release the handle.
 		c.dropHandle(r.Handle)
@@ -1599,10 +1594,8 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.LockRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
+		handle := node
+		shandle := serveHandle{handle, []byte{}}
 		h, ok := shandle.handle.(HandleLocker)
 		if !ok {
 			return syscall.ENOTSUP
@@ -1615,10 +1608,8 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.LockWaitRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
+		handle := node
+		shandle := serveHandle{handle, []byte{}}
 		h, ok := shandle.handle.(HandleLocker)
 		if !ok {
 			return syscall.ENOTSUP
@@ -1631,10 +1622,8 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.UnlockRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
+		handle := node
+		shandle := serveHandle{handle, []byte{}}
 		h, ok := shandle.handle.(HandleLocker)
 		if !ok {
 			return syscall.ENOTSUP
@@ -1647,10 +1636,8 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.QueryLockRequest:
-		shandle := c.getHandle(r.Handle)
-		if shandle == nil {
-			return syscall.ESTALE
-		}
+		handle := node
+		shandle := serveHandle{handle, []byte{}}
 		h, ok := shandle.handle.(HandleLocker)
 		if !ok {
 			return syscall.ENOTSUP

@@ -1420,7 +1420,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 			}
 		}
 		done(s)
-		r.Respond(s)
+		r.RespondNew(s)
 		return nil
 
 	case *fuse.WriteRequest:

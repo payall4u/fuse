@@ -311,6 +311,13 @@ func (h *Header) respond(msg []byte) {
 	putMessage(h.msg)
 }
 
+func (h *Header) respondWithLength(msg []byte, length int) {
+	out := (*outHeader)(unsafe.Pointer(&msg[0]))
+	out.Unique = uint64(h.ID)
+	h.Conn.respondWithLength(msg, length)
+	putMessage(h.msg)
+}
+
 // An ErrorNumber is an error with a specific error number.
 //
 // Operations may return an error value that implements ErrorNumber to
@@ -1173,9 +1180,36 @@ func (c *Conn) writeToKernel(msg []byte) error {
 	}
 	return err
 }
+func (c *Conn) writeToKernelWithLength(msg []byte, length int) error {
+	out := (*outHeader)(unsafe.Pointer(&msg[0]))
+	out.Len = uint32(length)
+
+	c.wio.RLock()
+	defer c.wio.RUnlock()
+	nn, err := syscall.Write(c.fd(), msg)
+	if err == nil && nn != len(msg) {
+		Debug(bugShortKernelWrite{
+			Written: int64(nn),
+			Length:  int64(len(msg)),
+			Error:   errorString(err),
+			Stack:   stack(),
+		})
+	}
+	return err
+}
+
 
 func (c *Conn) respond(msg []byte) {
 	if err := c.writeToKernel(msg); err != nil {
+		Debug(bugKernelWriteError{
+			Error: errorString(err),
+			Stack: stack(),
+		})
+	}
+}
+
+func (c *Conn) respondWithLength(msg []byte, length int) {
+	if err := c.writeToKernelWithLength(msg, length); err != nil {
 		Debug(bugKernelWriteError{
 			Error: errorString(err),
 			Stack: stack(),
@@ -1932,6 +1966,10 @@ func (r *ReadRequest) Respond(resp *ReadResponse) {
 	buf := newBuffer(uintptr(len(resp.Data)))
 	buf = append(buf, resp.Data...)
 	r.respond(buf)
+}
+
+func (r *ReadRequest) RespondNew(resp *ReadResponse) {
+	r.respond(resp.Data)
 }
 
 // A ReadResponse is the response to a ReadRequest.

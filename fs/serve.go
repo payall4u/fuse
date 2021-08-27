@@ -3,11 +3,13 @@
 package fs // import "bazil.org/fuse/fs"
 
 import (
+	"bazil.org/fuse/fuseutil"
 	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"hash/fnv"
 	"io"
 	"reflect"
@@ -17,8 +19,6 @@ import (
 	"time"
 
 	"bazil.org/fuse"
-	"bazil.org/fuse/fuseutil"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -611,6 +611,7 @@ func (n nodeRefcountDropBug) String() string {
 // If reference count dropped to zero, returns true.
 // Note that node is not guaranteed to be non-nil.
 func (c *Server) dropNode(id fuse.NodeID, n uint64) (node Node, forget bool) {
+	return nil, true
 	c.meta.Lock()
 	defer c.meta.Unlock()
 	snode := c.node[id]

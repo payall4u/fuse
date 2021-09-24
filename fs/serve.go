@@ -3,6 +3,7 @@
 package fs // import "bazil.org/fuse/fs"
 
 import (
+	"bazil.org/fuse/pipes"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -11,6 +12,7 @@ import (
 	"hash/fnv"
 	"io"
 	"log"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -496,6 +498,20 @@ func (s *Server) Serve(fs FS) error {
 		refs:       1,
 	})
 	s.handle = append(s.handle, nil)
+	reqChan := make(chan fuse.Request, 1024)
+
+	for i := 0; i < 10; i++ {
+		file, err := os.OpenFile(pipes.Name, os.O_RDONLY, 0644)
+		if err != nil {
+			panic(err)
+		}
+		pipes.Files[i] = file
+		go func(number int) {
+			for req := range reqChan {
+				s.serve(req, number)
+			}
+		}(i)
+	}
 
 	for {
 		req, err := s.conn.ReadRequest()
@@ -505,12 +521,7 @@ func (s *Server) Serve(fs FS) error {
 			}
 			return err
 		}
-
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			s.serve(req)
-		}()
+		reqChan <- req
 	}
 	return nil
 }
@@ -905,7 +916,7 @@ func (m *logDuplicateRequestID) String() string {
 	return fmt.Sprintf("Duplicate request: new %v, old %v", m.New, m.Old)
 }
 
-func (c *Server) serve(r fuse.Request) {
+func (c *Server) serve(r fuse.Request, number int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	parentCtx := ctx
@@ -1012,7 +1023,7 @@ func (c *Server) serve(r fuse.Request) {
 		}
 	}()
 
-	if err := c.handleRequest(ctx, node, snode, r, done); err != nil {
+	if err := c.handleRequest(ctx, node, snode, r, done, number); err != nil {
 		if err == context.Canceled {
 			select {
 			case <-parentCtx.Done():
@@ -1041,7 +1052,7 @@ func (c *Server) serve(r fuse.Request) {
 }
 
 // handleRequest will either a) call done(s) and r.Respond(s) OR b) return an error.
-func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode, r fuse.Request, done func(resp interface{})) error {
+func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode, r fuse.Request, done func(resp interface{}), number int) error {
 	switch r := r.(type) {
 	default:
 		// Note: To FUSE, ENOSYS means "this server never implements this request."
@@ -1420,7 +1431,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 			}
 		}
 		done(s)
-		r.RespondNew(s)
+		r.RespondNew(s, number)
 		return nil
 
 	case *fuse.WriteRequest:

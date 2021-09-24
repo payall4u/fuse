@@ -110,6 +110,9 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"bazil.org/fuse/pipes"
+	"golang.org/x/sys/unix"
 )
 
 // A Conn represents a connection to a mounted FUSE file system.
@@ -1198,7 +1201,6 @@ func (c *Conn) writeToKernelWithLength(msg []byte, length int) error {
 	return err
 }
 
-
 func (c *Conn) respond(msg []byte) {
 	if err := c.writeToKernel(msg); err != nil {
 		Debug(bugKernelWriteError{
@@ -1968,13 +1970,44 @@ func (r *ReadRequest) Respond(resp *ReadResponse) {
 	r.respond(buf)
 }
 
-func (r *ReadRequest) RespondNew(resp *ReadResponse) {
+func (r *ReadRequest) RespondNew(resp *ReadResponse, number int) {
+	if resp.Fd != 0 {
+		p := pipes.Pipes[number]
+		// 1.1 set header
+		out := (*outHeader)(resp.Header)
+		out.Len = uint32(uintptr(resp.BufferLen) + unsafe.Sizeof(outHeader{}))
+		out.Unique = uint64(r.ID)
+		// 2. vmsplice iovec to pipe
+		vec := []unix.Iovec{}
+		vec = append(vec, unix.Iovec{
+			Base: (*uint8)(resp.Header),
+			Len:  uint64(unsafe.Sizeof(outHeader{})),
+		})
+		_, err := unix.Vmsplice(p.W, vec, unix.SPLICE_F_NONBLOCK)
+		if err != nil {
+			panic(err)
+		}
+		_, err = unix.Splice(int(pipes.Files[number].Fd()), &resp.Offset,  p.W, nil, resp.BufferLen, unix.SPLICE_F_MOVE|unix.SPLICE_F_NONBLOCK)
+		if err != nil {
+			panic(err)
+		}
+		// 3. splice pipe to dev
+		_, err = unix.Splice(p.R, nil, r.Conn.fd(), nil, int(out.Len), unix.SPLICE_F_MOVE|unix.SPLICE_F_NONBLOCK)
+		if err != nil {
+			panic(err)
+		}
+		return
+	}
 	r.respond(resp.Data)
 }
 
 // A ReadResponse is the response to a ReadRequest.
 type ReadResponse struct {
-	Data []byte
+	Data      []byte
+	Header    unsafe.Pointer
+	Fd        int
+	Offset    int64
+	BufferLen int
 }
 
 func (r *ReadResponse) String() string {

@@ -1,17 +1,18 @@
 package main
 
 import (
+	"bazil.org/fuse/pipes"
 	"context"
 	"flag"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/signal"
-	"reflect"
 	"sync"
-	"syscall"
 	"unsafe"
+
+	_ "net/http/pprof"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -31,7 +32,10 @@ func init() {
 }
 
 func main() {
-
+	pipes.Name = dataFile
+	go func() {
+		http.ListenAndServe("localhost:8899", nil)
+	}()
 	fs := &filesystem{
 		root:     mountPoint,
 		filename: dataFile,
@@ -138,29 +142,29 @@ func (n *node) Attr(ctx context.Context, attr *fuse.Attr) error {
 }
 
 func (i *node) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
-	headerSize := int(unsafe.Sizeof(struct {
-		Len    uint32
-		Error  int32
-		Unique uint64
-	}{}))
-	suffixPaddingSize := 4096 - headerSize
-	allSize := 4096 + req.Size
-	allBuffer := newBufferFromHeap(allSize)
-
-	dataBuffer := allBuffer[4096:]
-	ptr := (*reflect.SliceHeader)(unsafe.Pointer(&dataBuffer)).Data
-	_, _, e := syscall.Syscall6(syscall.SYS_MMAP, ptr, uintptr(req.Size), uintptr(syscall.PROT_READ), uintptr(syscall.MAP_FIXED | syscall.MAP_FILE | syscall.MAP_PRIVATE), i.file.Fd(), uintptr(req.Offset))
-	// size, err := i.file.ReadAt(buffer, req.Offset)
-	resp.Data = allBuffer[suffixPaddingSize:]
-	if int(e) != 0 {
-		logrus.WithField("action", "read").Errorf("read failed: %s", e.Error())
-		return e
-	}
+	header := newHeaderFromHeap()
+	resp.Header = unsafe.Pointer(header)
+	resp.Fd = int(i.file.Fd())
+	resp.Offset = req.Offset
+	resp.BufferLen = req.Size
 	return nil
 }
 
+type outHeader struct {
+	Len    uint32
+	Error  int32
+	Unique uint64
+}
+
 func newBufferFromHeap(size int) []byte {
+	size = (size + (4096 - 1)) / 4096 * 4096
 	m := make([]byte, size, size)
 	hmap.Store(rand.Int(), m)
 	return m
+}
+
+func newHeaderFromHeap() *outHeader {
+	s := &outHeader{}
+	hmap.Store(rand.Int(), s)
+	return s
 }
